@@ -1,16 +1,17 @@
-name: Scheduled Request
+name: Scheduled Request - GitHub API Integration
 
 on:
   schedule:
-    - cron: '*/4 * * * *'  # 每 4 分钟执行一次
-  workflow_dispatch:  # 允许手动触发
+    - cron: '*/4 * * * *'  # 每4分钟执行一次
+  workflow_dispatch:  # 允许手动触发运行
+
+permissions:
+  actions: write  # 允许读写工作流和变量
+  contents: read  # 允许读取仓库内容
 
 jobs:
   send-request:
     runs-on: ubuntu-latest
-    # 添加权限，确保工作流可以设置环境变量
-    permissions:
-      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -23,20 +24,146 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Send request and save response
-        id: get_token  # 添加ID以引用此步骤
-        run: python send_request.py
-
-      - name: Verify SQL_TOKEN environment variable
-        if: success()  # 只有在前一步成功时才执行
+      - name: Check environment configuration
+        id: check-config
         run: |
-          echo "验证SQL_TOKEN环境变量是否可用: ${{ env.SQL_TOKEN }}"
-          # 检查环境变量是否已设置
-          if [ -z "${{ env.SQL_TOKEN }}" ]; then
-            echo "SQL_TOKEN环境变量未设置"
-            exit 1
+          echo "=== Environment Configuration Check ==="
+          echo "GITHUB_REPOSITORY: $GITHUB_REPOSITORY"
+          echo "GITHUB_RUN_ID: $GITHUB_RUN_ID"
+          echo "=== Token Status ==="
+          # 注意：SQL_TOKEN环境变量可能已通过API写入仓库变量，而不是工作流环境变量
+          echo "数据库配置信息:"
+          echo "- DB_HOST: ${{ vars.DB_HOST != '' && '已设置' || '使用默认值' }}"
+          echo "- DB_PORT: ${{ vars.DB_PORT != '' && '已设置' || '使用默认值' }}"
+          echo "- DB_NAME: ${{ vars.DB_NAME != '' && '已设置' || '使用默认值' }}"
+          echo "- DB_USER: ${{ vars.DB_USER != '' && '已设置' || '使用默认值' }}"
+          echo "- DB_PASSWORD: ${{ vars.DB_PASSWORD != '' && '已设置' || '使用默认值' }}"
+        env:
+          # 环境变量仅用于显示状态，实际值将在执行脚本时注入
+
+      - name: Run Python script directly to get SQL Token and update repo variable
+        id: run-script
+        run: |
+          python -c "
+          import os
+          import json
+          import requests
+          import time
+
+          print(f'[INFO] 开始执行: {time.strftime(\"%Y-%m-%d %H:%M:%S\")}')
+          print(f'[INFO] 目标仓库: ${{ github.repository }}')
+          
+          # 核心配置 - 直接从GitHub环境中获取
+          GITHUB_TOKEN = '${{ secrets.TOKEN }}'
+          GITHUB_OWNER = '${{ github.repository_owner }}'
+          GITHUB_REPO = '${{ github.event.repository.name || 'SqlToken' }}'
+          SQL_API_URL = 'https://client.sqlpub.com/api/connection'
+
+          # 数据库连接配置 - 直接从GitHub vars中获取
+          connection_config = {
+              'host': '${{ vars.DB_HOST || '127.0.0.1' }}',
+              'port': int('${{ vars.DB_PORT || '3306' }}'),
+              'dbName': '${{ vars.DB_NAME || 'app_info' }}',
+              'dbUser': '${{ vars.DB_USER || 'mb1154820' }}',
+              'password': '${{ vars.DB_PASSWORD || 'pJbkyzeYJX1bQKTt' }}'
+          }
+
+          def set_github_repo_variable(token, owner, repo, var_name, var_value):
+              \"\"\"使用GitHub API设置仓库变量\"\"\"
+              headers = {
+                  'Authorization': f'token {token}',
+                  'Accept': 'application/vnd.github.v3+json',
+              }
+              
+              # 先检查变量是否存在
+              get_url = f'https://api.github.com/repos/{owner}/{repo}/actions/variables/{var_name}'
+              response = requests.get(get_url, headers=headers)
+              
+              # 根据变量是否存在选择更新或创建
+              if response.status_code == 200:
+                  # 更新现有变量
+                  url = get_url
+                  method = 'PATCH'
+                  print(f\"[INFO] 更新GitHub仓库变量: {var_name}\")
+              else:
+                  # 创建新变量
+                  url = f'https://api.github.com/repos/{owner}/{repo}/actions/variables'
+                  method = 'POST'
+                  print(f\"[INFO] 创建GitHub仓库变量: {var_name}\")
+              
+              # 发送请求
+              data = {'name': var_name, 'value': var_value}
+              response = requests.request(method, url, headers=headers, json=data)
+              
+              if response.status_code in [200, 201, 204]:
+                  print(f\"[SUCCESS] 成功{'更新' if method == 'PATCH' else '创建'}变量: {var_name}\")
+                  return True
+              else:
+                  print(f\"[ERROR] 设置变量失败: {response.status_code} - {response.text}\")
+                  return False
+
+          try:
+              # 1. 获取SQL Token
+              print(f\"[INFO] 发送请求到SQL API: {SQL_API_URL}\")
+              headers = {
+                  'accept': 'application/json',
+                  'content-type': 'application/json',
+                  'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+              }
+              
+              response = requests.post(
+                  SQL_API_URL,
+                  headers=headers,
+                  json=connection_config,
+                  timeout=10
+              )
+              
+              print(f\"[INFO] API响应状态: {response.status_code}\")
+              response.raise_for_status()
+              
+              data = response.json()
+              if data.get('success') and data.get('data') and 'token' in data['data']:
+                  sql_token = data['data']['token']
+                  print(f\"[SUCCESS] 成功获取SQL Token\")
+                  
+                  # 2. 设置到GitHub仓库变量
+                  if GITHUB_TOKEN:
+                      success = set_github_repo_variable(
+                          token=GITHUB_TOKEN,
+                          owner=GITHUB_OWNER,
+                          repo=GITHUB_REPO,
+                          var_name='SQL_TOKEN',
+                          var_value=sql_token
+                      )
+                      
+                      if success:
+                          print(\"[SUCCESS] 任务完成: SQL Token已成功设置到GitHub仓库变量\")
+                          exit(0)
+                      else:
+                          print(\"[ERROR] 任务失败: 无法设置GitHub仓库变量\")
+                          exit(1)
+                  else:
+                      print(\"[ERROR] 缺少GITHUB_TOKEN，无法设置仓库变量\")
+                      exit(1)
+              else:
+                  print(f\"[ERROR] API响应中未找到有效token: {json.dumps(data)} \")
+                  exit(1)
+          
+          except Exception as e:
+              print(f\"[ERROR] 执行过程中出错: {str(e)}\")
+              exit(1)
+          "
+        env:
+          # 环境变量已直接在Python代码中使用GitHub表达式获取，无需额外设置
+
+      - name: Verify execution result
+        if: always()
+        run: |
+          echo "=== 执行结果验证 ==="
+          echo "工作流执行状态: ${{ job.status }}"
+          if [ -f "sql_token.txt" ]; then
+            echo "本地token文件已生成 (显示前8个字符): $(head -c 8 sql_token.txt)..."
           else
-            echo "SQL_TOKEN环境变量已成功设置"
-            # 出于安全考虑，只打印token的前几个字符
-            echo "Token前缀: $(echo ${{ env.SQL_TOKEN }} | cut -c1-8)..."
+            echo "未找到本地token文件，但可能已通过API设置到仓库变量中"
           fi
+          # 注意：SQL_TOKEN环境变量可能已通过API写入仓库变量，而不是工作流环境变量

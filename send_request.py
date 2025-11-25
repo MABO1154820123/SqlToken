@@ -1,140 +1,114 @@
-import requests
 import os
 import json
-import traceback
+import requests
 import time
-from urllib.parse import urlencode
 
-# SqlToken接口地址
-url = "https://client.sqlpub.com/api/connection"
+# 核心配置
+# 从环境变量获取GitHub Token，工作流文件中已将secrets.TOKEN映射为GITHUB_TOKEN
+GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
+GITHUB_OWNER = 'MABO1154820123'
+GITHUB_REPO = 'SqlToken'
+SQL_API_URL = 'https://client.sqlpub.com/api/connection'
 
-# 数据库连接配置
+# 数据库连接配置（从环境变量获取，带默认值）
 connection_config = {
-    'host':'127.0.0.1',
-    'port':3306,
-    'dbName':'app_info',
-    'dbUser':'mb1154820',
-    'password':'pJbkyzeYJX1bQKTt'
+    'host': os.environ.get('DB_HOST', '127.0.0.1'),
+    'port': int(os.environ.get('DB_PORT', '3306')),
+    'dbName': os.environ.get('DB_NAME', 'app_info'),
+    'dbUser': os.environ.get('DB_USER', 'mb1154820'),
+    'password': os.environ.get('DB_PASSWORD', 'pJbkyzeYJX1bQKTt')
 }
 
-# 准备请求头（按照tokenTool.js的格式）
-headers = {
-    'accept': 'application/json, text/plain, */*',
-    'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
-    'content-type': 'application/json',  # 使用JSON格式，而不是urlencoded
-    'origin': 'https://client.sqlpub.com',
-    'referer': 'https://client.sqlpub.com/workbench',
-    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0'
-}
-
-# 发送POST请求获取SQL Token
-try:
-    print(f"正在发送请求到 {url}")
-    # 使用JSON格式发送请求体，设置超时为10秒
-    response = requests.post(
-        url, 
-        headers=headers, 
-        data=json.dumps(connection_config),  # 使用json.dumps而不是urlencode
-        timeout=10  # 设置超时，类似于tokenTool.js中的AbortSignal.timeout
-    )
+def set_github_repo_variable(token, owner, repo, var_name, var_value):
+    """使用GitHub API设置仓库变量"""
+    headers = {
+        'Authorization': f'token {token}',
+        'Accept': 'application/vnd.github.v3+json',
+    }
     
-    # 打印请求状态和响应信息用于调试
-    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 请求状态码: {response.status_code}")
-    # 记录GitHub Actions环境检查
-    if 'GITHUB_ENV' in os.environ:
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] GitHub Actions环境检测: 已确认")
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] GITHUB_ENV路径: {os.environ['GITHUB_ENV']}")
-        # 检查文件权限
-        try:
-            env_file = os.environ['GITHUB_ENV']
-            if os.path.exists(env_file):
-                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] GITHUB_ENV文件存在，大小: {os.path.getsize(env_file)} 字节")
-                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] GITHUB_ENV文件权限: r={os.access(env_file, os.R_OK)}, w={os.access(env_file, os.W_OK)}")
-            else:
-                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] GITHUB_ENV文件不存在，但环境变量已设置")
-        except Exception as e:
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 检查GITHUB_ENV文件时出错: {e}")
+    # 先检查变量是否存在
+    get_url = f'https://api.github.com/repos/{owner}/{repo}/actions/variables/{var_name}'
+    response = requests.get(get_url, headers=headers)
+    
+    # 根据变量是否存在选择更新或创建
+    if response.status_code == 200:
+        # 更新现有变量
+        url = get_url
+        method = 'PATCH'
+        print(f"[INFO] 更新GitHub仓库变量: {var_name}")
     else:
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] GitHub Actions环境检测: 未检测到，当前环境变量: {list(os.environ.keys())[:5]}...")
+        # 创建新变量
+        url = f'https://api.github.com/repos/{owner}/{repo}/actions/variables'
+        method = 'POST'
+        print(f"[INFO] 创建GitHub仓库变量: {var_name}")
     
-    # 解析JSON响应
+    # 发送请求
+    data = {'name': var_name, 'value': var_value}
+    response = requests.request(method, url, headers=headers, json=data)
+    
+    if response.status_code in [200, 201, 204]:
+        print(f"[SUCCESS] 成功{'更新' if method == 'PATCH' else '创建'}变量: {var_name}")
+        return True
+    else:
+        print(f"[ERROR] 设置变量失败: {response.status_code} - {response.text}")
+        return False
+
+def main():
+    """主函数"""
+    print(f"[INFO] 开始执行: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[INFO] 目标仓库: {GITHUB_OWNER}/{GITHUB_REPO}")
+    
+    # 1. 获取SQL Token
+    print(f"[INFO] 发送请求到SQL API: {SQL_API_URL}")
+    headers = {
+        'accept': 'application/json',
+        'content-type': 'application/json',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+    }
+    
     try:
-        json_data = response.json()
-        print(f"响应数据: {json_data}")
+        response = requests.post(
+            SQL_API_URL,
+            headers=headers,
+            json=connection_config,
+            timeout=10
+        )
         
-        # 根据tokenTool.js的响应格式，token在data.token中
-        if isinstance(json_data, dict) and json_data.get('success') and json_data.get('data') and 'token' in json_data['data']:
-            sql_token = json_data['data']['token']
-            print(f"成功获取token: {sql_token}")
+        print(f"[INFO] API响应状态: {response.status_code}")
+        response.raise_for_status()
+        
+        data = response.json()
+        if data.get('success') and data.get('data') and 'token' in data['data']:
+            sql_token = data['data']['token']
+            print(f"[SUCCESS] 成功获取SQL Token")
             
-            # 检查是否在GitHub Actions环境中
-            if 'GITHUB_ENV' in os.environ:
-                github_env_path = os.environ['GITHUB_ENV']
-                print(f"在GitHub Actions环境中，尝试写入{github_env_path}")
-                try:
-                    # 将token写入GitHub环境变量SQL_TOKEN
-                    with open(github_env_path, 'a') as f:
-                        f.write(f"SQL_TOKEN={sql_token}\n")
-                    # 强制刷新文件缓冲区
-                    f.flush()
-                    os.fsync(f.fileno())
-                    print(f"成功更新SQL_TOKEN环境变量")
-                except Exception as e:
-                    print(f"写入GITHUB_ENV文件时出错: {e}")
-                    print(f"GITHUB_ENV路径: {github_env_path}")
-                    print(f"尝试写入的内容: SQL_TOKEN={sql_token[:8]}...")  # 只显示token的前几个字符
-                    # 继续执行，不中断流程
+            # 2. 设置到GitHub仓库变量
+            if GITHUB_TOKEN:
+                success = set_github_repo_variable(
+                    token=GITHUB_TOKEN,
+                    owner=GITHUB_OWNER,
+                    repo=GITHUB_REPO,
+                    var_name='SQL_TOKEN',
+                    var_value=sql_token
+                )
+                
+                if success:
+                    print("[SUCCESS] 任务完成: SQL Token已成功设置到GitHub仓库变量")
+                    return 0
+                else:
+                    print("[ERROR] 任务失败: 无法设置GitHub仓库变量")
+                    return 1
             else:
-                print("不在GitHub Actions环境中，跳过环境变量写入")
-                # 在非GitHub环境中，可以将token保存到临时文件供测试使用
-                try:
-                    with open('sql_token.txt', 'w') as f:
-                        f.write(sql_token)
-                    print(f"已将token保存到sql_token.txt文件中供本地测试")
-                except:
-                    pass
-            
-            print("请求处理完成，成功获取token")
-            exit(0)  # 成功退出
+                print("[ERROR] 缺少GITHUB_TOKEN，无法设置仓库变量")
+                return 1
         else:
-            # 打印详细的错误信息
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 响应中未找到有效的token")
-        if isinstance(json_data, dict):
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 响应字典结构: {list(json_data.keys())}")
-            if 'errorMessage' in json_data:
-                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 错误信息: {json_data['errorMessage']}")
-            if 'errorCode' in json_data:
-                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 错误代码: {json_data['errorCode']}")
-            if json_data.get('success') is False:
-                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 请求失败: success=false")
-            if 'data' in json_data:
-                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] data字段类型: {type(json_data['data'])}")
-                if isinstance(json_data['data'], dict):
-                    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] data字段结构: {list(json_data['data'].keys())}")
-            
-    except json.JSONDecodeError:
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 警告: 无法解析JSON响应")
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 响应内容: {response.text[:500]}..." if len(response.text) > 500 else response.text)
+            print(f"[ERROR] API响应中未找到有效token: {data}")
+            return 1
     
-    # 检查状态码
-    if response.status_code != 200:
-        print(f"警告: 请求返回非200状态码 {response.status_code}")
+    except Exception as e:
+        print(f"[ERROR] 执行过程中出错: {str(e)}")
+        return 1
 
-    print("请求处理完成，但未能成功获取token")
-    exit(1)  # 未获取到token，退出码为1
-        
-except requests.exceptions.RequestException as e:
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 请求失败: {e}")
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 错误详情: {traceback.format_exc()}")
-        if hasattr(e, 'response') and e.response is not None:
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 响应状态: {e.response.status_code}")
-            try:
-                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 响应内容: {e.response.text[:500]}..." if len(e.response.text) > 500 else e.response.text)
-            except Exception as inner_e:
-                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 无法打印响应内容: {inner_e}")
-        exit(1)
-
-except Exception as e:
-    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 发生未预期的错误: {e}")
-    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 错误详情: {traceback.format_exc()}")
-    exit(1)
+if __name__ == "__main__":
+    exit_code = main()
+    exit(exit_code)
