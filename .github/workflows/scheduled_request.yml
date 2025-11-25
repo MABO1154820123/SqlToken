@@ -1,8 +1,8 @@
-name: Scheduled Request - GitHub API Integration
+name: SqlTokenRefresh
 
 on:
   schedule:
-    - cron: '*/4 * * * *'  # 每4分钟执行一次
+    - cron: '0 */23 * * *'  # 每23小时执行一次
   workflow_dispatch:  # 允许手动触发运行
 
 permissions:
