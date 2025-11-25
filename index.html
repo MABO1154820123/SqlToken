@@ -3,53 +3,325 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SQL Token API</title>
+    <title>SQL Token API - 变量获取</title>
     <script>
         // 注意：GitHub Pages本身无法直接访问仓库的secrets或vars
-        // 这个页面模拟返回JSON格式的SQL Token
-        // 实际部署时，需要通过GitHub Actions将SQL_TOKEN的值写入到这个HTML文件中
+        // 这个页面通过GitHub Actions注入的方式获取变量数据
         
-        // 设置响应头为JSON
-        document.addEventListener('DOMContentLoaded', function() {
-            // 获取URL参数，看是否需要返回JSON格式
+        // 默认行为：检查是否需要返回JSON或调试信息
+        window.onload = function() {
             const urlParams = new URLSearchParams(window.location.search);
             const format = urlParams.get('format');
             
+            // 获取数据（在任何情况下都执行，这样可以用于默认页面显示）
+            const data = collectData();
+            
+            // 如果需要JSON格式响应
             if (format === 'json') {
-                // 尝试从某个隐藏元素获取token（实际部署时由GitHub Actions注入）
-                let sqlToken = document.getElementById('sql-token')?.textContent || 'NOT_AVAILABLE';
+                // 设置Content-Type并返回JSON
+                document.body.innerHTML = JSON.stringify(data, null, 2);
                 
-                // 构造JSON响应
-                const response = {
-                    "sqlToken": sqlToken
+            // 如果需要调试信息
+            } else if (format === 'debug') {
+                // 收集调试信息
+                const debugInfo = {
+                    collectedData: data,
+                    sqlTokenElementExists: !!document.getElementById('sql-token'),
+                    variableElementsCount: document.querySelectorAll('[id^="var-"]').length,
+                    secretElementsCount: document.querySelectorAll('[id^="secret-"]').length,
+                    envElementsCount: document.querySelectorAll('[id^="env-"]').length,
+                    urlParams: Object.fromEntries(urlParams.entries()),
+                    userAgent: navigator.userAgent,
+                    currentTime: new Date().toISOString(),
+                    pageTitle: document.title
                 };
                 
-                // 输出JSON
-                document.body.textContent = JSON.stringify(response);
-                // 更改Content-Type
-                document.title = 'SQL Token JSON';
+                // 显示调试信息
+                document.body.innerHTML = `<h1>调试信息</h1><pre>${JSON.stringify(debugInfo, null, 2)}</pre>`;
+            } else {
+                // 默认页面：显示数据到UI
+                displayDataToUI(data);
             }
-        });
+        };
+        
+        // 收集所有变量数据的函数
+        function collectData() {
+            // 获取SQL Token
+            const sqlTokenElement = document.getElementById('sql-token');
+            const sqlToken = sqlTokenElement ? sqlTokenElement.textContent : 'NOT_AVAILABLE';
+            
+            // 获取常规变量
+            const variables = {};
+            const variableElements = document.querySelectorAll('[id^="var-"]');
+            variableElements.forEach(element => {
+                const key = element.id.replace('var-', '');
+                const value = element.textContent;
+                if (key) variables[key] = value || 'NOT_AVAILABLE';
+            });
+            
+            // 手动添加SQL_TOKEN变量以保持兼容性
+            if (!variables['SQL_TOKEN'] && document.getElementById('var-sql-token')) {
+                variables['SQL_TOKEN'] = document.getElementById('var-sql-token').textContent || 'NOT_AVAILABLE';
+            }
+            
+            // 获取加密变量（实际值不显示，只显示存在性）
+            const secrets = {};
+            const secretElements = document.querySelectorAll('[id^="secret-"]');
+            secretElements.forEach(element => {
+                const key = element.id.replace('secret-', '');
+                const hasContent = !!element.textContent && element.textContent !== `{{ SECRET_${key.toUpperCase()} }}`;
+                if (key) secrets[key] = hasContent ? 'SECRET_HIDDEN' : 'NOT_AVAILABLE';
+            });
+            
+            // 获取环境信息
+            const environment = {};
+            const envElements = document.querySelectorAll('[id^="env-"]');
+            envElements.forEach(element => {
+                const key = element.id.replace('env-', '');
+                const value = element.textContent;
+                if (key) environment[key] = value || 'UNKNOWN';
+            });
+            
+            // 添加timestamp
+            environment.timestamp = new Date().toISOString();
+            
+            // 构建数据对象
+            return {
+                sqlToken: sqlToken,
+                variables: variables,
+                secrets: secrets,
+                environment: environment
+            };
+        }
+        
+        // 将数据显示到UI的函数
+        function displayDataToUI(data) {
+            // 更新SQL Token显示
+            const tokenDisplay = document.getElementById('display-sql-token');
+            if (tokenDisplay) {
+                // 如果是占位符，则显示NOT_AVAILABLE，否则显示实际值
+                if (data.sqlToken === '{{ SQL_TOKEN }}' || data.sqlToken.trim() === '') {
+                    tokenDisplay.textContent = 'NOT_AVAILABLE';
+                    tokenDisplay.style.backgroundColor = '#ffebee';
+                } else {
+                    tokenDisplay.textContent = data.sqlToken;
+                    tokenDisplay.style.backgroundColor = '#e8f5e9';
+                }
+            }
+            
+            // 更新最后更新时间
+            const lastUpdatedElement = document.getElementById('last-updated');
+            if (lastUpdatedElement) {
+                lastUpdatedElement.textContent = new Date().toLocaleString();
+            }
+            
+            // 如果有额外的变量，动态添加到界面
+            const variablesContainer = document.getElementById('variables-container');
+            if (variablesContainer && Object.keys(data.variables).length > 0) {
+                const variablesList = document.createElement('div');
+                variablesList.className = 'variables-list';
+                variablesList.innerHTML = '<h3>额外变量</h3>';
+                
+                // 创建变量表格
+                const table = document.createElement('table');
+                table.border = '1';
+                table.cellPadding = '8';
+                table.cellSpacing = '0';
+                table.style.width = '100%';
+                table.style.marginTop = '10px';
+                
+                // 添加表头
+                const thead = document.createElement('thead');
+                const headerRow = document.createElement('tr');
+                headerRow.style.backgroundColor = '#f2f2f2';
+                
+                const keyHeader = document.createElement('th');
+                keyHeader.textContent = '变量名';
+                const valueHeader = document.createElement('th');
+                valueHeader.textContent = '值';
+                
+                headerRow.appendChild(keyHeader);
+                headerRow.appendChild(valueHeader);
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+                
+                // 添加表格内容
+                const tbody = document.createElement('tbody');
+                for (const [key, value] of Object.entries(data.variables)) {
+                    const row = document.createElement('tr');
+                    
+                    const keyCell = document.createElement('td');
+                    keyCell.textContent = key;
+                    keyCell.style.fontWeight = 'bold';
+                    keyCell.style.width = '30%';
+                    
+                    const valueCell = document.createElement('td');
+                    valueCell.textContent = value;
+                    valueCell.style.fontFamily = 'monospace';
+                    
+                    row.appendChild(keyCell);
+                    row.appendChild(valueCell);
+                    tbody.appendChild(row);
+                }
+                table.appendChild(tbody);
+                
+                variablesList.appendChild(table);
+                variablesContainer.appendChild(variablesList);
+            }
+            
+            // 如果有密钥信息，显示存在性
+            if (Object.keys(data.secrets).length > 0) {
+                const secretsInfo = document.createElement('div');
+                secretsInfo.className = 'secret-info';
+                secretsInfo.innerHTML = `<p><strong>已配置的密钥:</strong> ${Object.keys(data.secrets).join(', ')}</p>`;
+                variablesContainer.appendChild(secretsInfo);
+            }
+        }
     </script>
-    <!-- 这个元素将由GitHub Actions在部署时填充实际的SQL_TOKEN值 -->
-    <div id="sql-token" style="display: none;">{{ SQL_TOKEN }}</div>
+    
+    <!-- 变量存储区域 - 由GitHub Actions在部署时填充 -->
+    <div style="display: none;">
+        <!-- 主要SQL Token -->
+        <div id="sql-token">{{ SQL_TOKEN }}</div>
+        
+        <!-- 常规变量 -->
+        <div id="var-sql-token">{{ VAR_SQL_TOKEN }}</div>
+        
+        <!-- 加密变量/密钥 -->
+        <div id="secret-sql-token">{{ SECRET_SQL_TOKEN }}</div>
+        <div id="secret-db-host">{{ SECRET_DB_HOST }}</div>
+        <div id="secret-db-port">{{ SECRET_DB_PORT }}</div>
+        <div id="secret-db-name">{{ SECRET_DB_NAME }}</div>
+        <div id="secret-db-user">{{ SECRET_DB_USER }}</div>
+        
+        <!-- 环境信息 -->
+        <div id="env-last-updated">{{ ENV_LAST_UPDATED }}</div>
+        <div id="env-workflow-run">{{ ENV_WORKFLOW_RUN }}</div>
+    </div>
 </head>
 <body>
-    <h1>SQL Token API</h1>
-    <p>访问 <a href="?format=json">?format=json</a> 以获取JSON格式的SQL Token</p>
+    <div class="container">
+        <h1>SQL Token API - 变量管理界面</h1>
+        
+        <div class="actions">
+            <button onclick="window.location.href='?format=json'">获取JSON格式数据</button>
+            <button onclick="window.location.href='?format=debug'">查看调试信息</button>
+        </div>
+        
+        <div id="variables-container" class="variables-section">
+            <h2>主要变量信息</h2>
+            <div class="variable-card">
+                <h3>SQL Token</h3>
+                <div class="token-display" id="display-sql-token">NOT_AVAILABLE</div>
+                <p>最后更新时间: <span id="last-updated">未知</span></p>
+            </div>
+        </div>
+        
+        <div class="info-section">
+            <h2>可用的API端点</h2>
+            <ul>
+                <li><strong>默认页面</strong>: 显示此用户界面</li>
+                <li><strong>JSON数据</strong>: <code>?format=json</code> - 返回所有可用变量的JSON格式数据</li>
+                <li><strong>调试信息</strong>: <code>?format=debug</code> - 显示详细的调试信息，帮助排查问题</li>
+            </ul>
+            
+            <h2>变量获取说明</h2>
+            <p>此页面通过以下方式获取变量数据：</p>
+            <ol>
+                <li><strong>GitHub Actions注入</strong>: 在工作流运行时，将实际的变量值注入到HTML中的隐藏元素</li>
+                <li><strong>客户端JavaScript读取</strong>: 页面加载时，JavaScript从隐藏元素中读取数据并展示</li>
+            </ol>
+            
+            <h2>变量类型</h2>
+            <ul>
+                <li><strong>sqlToken</strong>: 主要的SQL访问令牌</li>
+                <li><strong>variables</strong>: GitHub仓库的常规环境变量</li>
+                <li><strong>secrets</strong>: 敏感的密钥信息（实际值已隐藏）</li>
+                <li><strong>environment</strong>: 环境和更新信息</li>
+            </ul>
+        </div>
+        
+        <div class="debug-tips">
+            <h3>调试提示</h3>
+            <p>如果无法获取变量数据，请检查：</p>
+            <ol>
+                <li>GitHub Actions工作流是否成功运行</li>
+                <li>工作流是否有权限写入index.html文件</li>
+                <li>变量占位符是否正确替换</li>
+                <li>访问 <a href="?format=debug">调试页面</a> 查看详细信息</li>
+            </ol>
+        </div>
+    </div>
     
-    <h2>关于安全存储说明</h2>
-    <p>为了将SQL Token保存到GitHub Secrets中，我们需要修改GitHub Actions工作流，使其：</p>
-    <ol>
-        <li>从SQL API获取新的Token</li>
-        <li>使用GitHub API将Token同时设置为仓库变量和仓库密钥</li>
-    </ol>
-    
-    <h2>GitHub Pages 限制</h2>
-    <p>请注意，GitHub Pages是静态网站托管服务，它无法直接访问仓库的secrets或vars。要使此页面能够提供Token，您需要：</p>
-    <ol>
-        <li>在GitHub Actions工作流中，将SQL_TOKEN的值写入到这个HTML文件中</li>
-        <li>然后部署更新后的HTML文件到GitHub Pages</li>
-    </ol>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .actions {
+            margin-bottom: 30px;
+        }
+        .actions button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin-right: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .actions button:hover {
+            background: #45a049;
+        }
+        .variables-section {
+            background: white;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 30px;
+        }
+        .variable-card {
+            background: #f0f7ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        .token-display {
+            font-family: monospace;
+            background: #e0e0e0;
+            padding: 10px;
+            border-radius: 4px;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+        .info-section {
+            background: white;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 30px;
+        }
+        code {
+            background: #f0f0f0;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .debug-tips {
+            background: #fff8e1;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            border-radius: 4px;
+        }
+    </style>
 </body>
 </html>

@@ -144,24 +144,62 @@ jobs:
                   print(f"[ERROR] 设置密钥失败: {response.status_code} - {response.text}")
                   return False
           
-          def update_index_html(token_value):
-              """更新index.html文件，注入SQL Token值"""
+          def update_index_html(token_value, variables=None, secrets=None):
+              """更新index.html文件，将SQL Token和所有变量注入到隐藏元素中"""
               try:
+                  from datetime import datetime
                   # 读取现有HTML文件
                   with open('index.html', 'r', encoding='utf-8') as f:
                       html_content = f.read()
-                  
+                   
                   # 替换token占位符
                   updated_content = html_content.replace('{{ SQL_TOKEN }}', token_value)
-                  
+                   
+                  # 处理常规变量
+                  if variables:
+                      for key, value in variables.items():
+                          placeholder = f'{{{{ VAR_{key.upper()} }}}}'
+                          updated_content = updated_content.replace(placeholder, value)
+                          # 同时更新id为var-{key}的元素内容
+                          var_placeholder = f'<span id="var-{key}">{{{{ VAR_{key.upper()} }}}}</span>'
+                          updated_content = updated_content.replace(var_placeholder, f'<span id="var-{key}">{value}</span>')
+                   
+                  # 处理加密变量（我们不存储实际值，只标记存在）
+                  if secrets:
+                      for key, value in secrets.items():
+                          secret_placeholder = f'{{{{ SECRET_{key.upper()} }}}}'
+                          updated_content = updated_content.replace(secret_placeholder, 'SECRET_VALUE_SET')
+                          # 同时更新id为secret-{key}的元素内容
+                          secret_element_placeholder = f'<span id="secret-{key}">{{{{ SECRET_{key.upper()} }}}}</span>'
+                          updated_content = updated_content.replace(secret_element_placeholder, f'<span id="secret-{key}">SECRET_VALUE_SET</span>')
+                   
+                  # 更新环境信息
+                  current_time = datetime.now().isoformat()
+                  updated_content = updated_content.replace('{{ ENV_TIMESTAMP }}', current_time)
+                  updated_content = updated_content.replace('<span id="env-timestamp">{{ ENV_TIMESTAMP }}</span>', f'<span id="env-timestamp">{current_time}</span>')
+                   
+                  # 添加更多环境信息
+                  workflow_run_id = os.environ.get('GITHUB_RUN_ID', 'UNKNOWN')
+                  updated_content = updated_content.replace('{{ ENV_WORKFLOW_RUN }}', workflow_run_id)
+                  updated_content = updated_content.replace('<span id="env-workflow-run">{{ ENV_WORKFLOW_RUN }}</span>', f'<span id="env-workflow-run">{workflow_run_id}</span>')
+                   
                   # 写回文件
                   with open('index.html', 'w', encoding='utf-8') as f:
                       f.write(updated_content)
-                  
-                  print(f"[SUCCESS] 成功更新index.html文件，注入SQL Token")
+                   
+                  # 打印更新信息
+                  print(f"[SUCCESS] 成功更新index.html文件")
+                  print(f"   - SQL Token已更新")
+                  if variables:
+                      print(f"   - 已更新{len(variables)}个常规变量")
+                  if secrets:
+                      print(f"   - 已更新{len(secrets)}个加密变量标记")
                   return True
               except Exception as e:
                   print(f"[ERROR] 更新index.html文件失败: {str(e)}")
+                  # 打印错误详情以帮助调试
+                  import traceback
+                  print(f"错误详情: {traceback.format_exc()}")
                   return False
 
           try:
@@ -208,8 +246,22 @@ jobs:
                           secret_value=sql_token
                       )
                       
-                      # 更新index.html文件
-                      html_success = update_index_html(sql_token)
+                      # 准备变量和密钥数据
+                      variables_data = {
+                          'SQL_TOKEN': sql_token,
+                          'DB_HOST': connection_config.get('host', 'NOT_SET'),
+                          'DB_PORT': connection_config.get('port', 'NOT_SET'),
+                          'DB_NAME': connection_config.get('dbname', 'NOT_SET'),
+                          'DB_USER': connection_config.get('user', 'NOT_SET')
+                      }
+                      
+                      secrets_data = {
+                          'SQL_TOKEN_SECRET': sql_token,
+                          'DB_PASSWORD': connection_config.get('password', 'NOT_SET')
+                      }
+                      
+                      # 更新index.html文件，传入所有变量和密钥信息
+                      html_success = update_index_html(sql_token, variables=variables_data, secrets=secrets_data)
                       
                       # 检查所有操作是否成功
                       if var_success and secret_success and html_success:
@@ -220,8 +272,22 @@ jobs:
                           # 即使部分操作失败，只要有一个成功就视为整体成功
                           exit(0)
                   else:
-                      # 即使没有GitHub Token，也尝试更新本地index.html文件
-                      html_success = update_index_html(sql_token)
+                      # 准备变量和密钥数据
+                      variables_data = {
+                          'SQL_TOKEN': sql_token,
+                          'DB_HOST': connection_config.get('host', 'NOT_SET'),
+                          'DB_PORT': connection_config.get('port', 'NOT_SET'),
+                          'DB_NAME': connection_config.get('dbname', 'NOT_SET'),
+                          'DB_USER': connection_config.get('user', 'NOT_SET')
+                      }
+                      
+                      secrets_data = {
+                          'SQL_TOKEN_SECRET': sql_token,
+                          'DB_PASSWORD': connection_config.get('password', 'NOT_SET')
+                      }
+                      
+                      # 即使没有GitHub Token，也尝试更新本地index.html文件，传入所有变量和密钥信息
+                      html_success = update_index_html(sql_token, variables=variables_data, secrets=secrets_data)
                       if html_success:
                           print("[SUCCESS] 本地index.html文件已更新，但无法设置GitHub仓库变量和密钥")
                           exit(0)
