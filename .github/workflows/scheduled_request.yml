@@ -1,0 +1,25 @@
+name: Scheduled Request
+
+on:
+  schedule:
+    - cron: '*/4 * * * *'  # 每 4 分钟执行一次
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  send-request:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Send request and save response
+        run: python send_request.py
