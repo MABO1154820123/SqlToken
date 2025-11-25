@@ -33,11 +33,11 @@ jobs:
           echo "=== Token Status ==="
           # 注意：SQL_TOKEN环境变量可能已通过API写入仓库变量，而不是工作流环境变量
           echo "数据库配置信息:"
-          echo "- DB_HOST: ${{ vars.DB_HOST != '' && '已设置' || '使用默认值' }}"
-          echo "- DB_PORT: ${{ vars.DB_PORT != '' && '已设置' || '使用默认值' }}"
-          echo "- DB_NAME: ${{ vars.DB_NAME != '' && '已设置' || '使用默认值' }}"
-          echo "- DB_USER: ${{ vars.DB_USER != '' && '已设置' || '使用默认值' }}"
-          echo "- DB_PASSWORD: ${{ vars.DB_PASSWORD != '' && '已设置' || '使用默认值' }}"
+          echo "- DB_HOST: ${{ secrets.DB_HOST != '' && '已设置' || '使用默认值' }}"
+          echo "- DB_PORT: ${{ secrets.DB_PORT != '' && '已设置' || '使用默认值' }}"
+          echo "- DB_NAME: ${{ secrets.DB_NAME != '' && '已设置' || '使用默认值' }}"
+          echo "- DB_USER: ${{ secrets.DB_USER != '' && '已设置' || '使用默认值' }}"
+          echo "- DB_PASSWORD: ${{ secrets.DB_PASSWORD != '' && '已设置' || '使用默认值' }}"
 
 
         # env:
@@ -61,13 +61,13 @@ jobs:
           GITHUB_REPO = '${{ github.event.repository.name || 'SqlToken' }}'
           SQL_API_URL = 'https://client.sqlpub.com/api/connection'
 
-          # 数据库连接配置 - 直接从GitHub vars中获取
+          # 数据库连接配置 - 直接从GitHub secrets中获取
           connection_config = {
-              'host': '${{ vars.DB_HOST || '127.0.0.1' }}',
-              'port': int('${{ vars.DB_PORT || '3306' }}'),
-              'dbName': '${{ vars.DB_NAME || 'app_info' }}',
-              'dbUser': '${{ vars.DB_USER || 'mb1154820' }}',
-              'password': '${{ vars.DB_PASSWORD || 'pJbkyzeYJX1bQKTt' }}'
+              'host': '${{ secrets.DB_HOST }}',
+              'port': int('${{ secrets.DB_PORT }}'),
+              'dbName': '${{ secrets.DB_NAME }}',
+              'dbUser': '${{ secrets.DB_USER }}',
+              'password': '${{ secrets.DB_PASSWORD }}'
           }
 
           def set_github_repo_variable(token, owner, repo, var_name, var_value):
