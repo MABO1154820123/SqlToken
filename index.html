@@ -182,21 +182,29 @@
     <!-- 变量存储区域 - 由GitHub Actions在部署时填充 -->
     <div style="display: none;">
         <!-- 主要SQL Token -->
-        <div id="sql-token">{{ SQL_TOKEN }}</div>
+        <span id="sql-token">{{ SQL_TOKEN }}</span>
         
         <!-- 常规变量 -->
-        <div id="var-sql-token">{{ VAR_SQL_TOKEN }}</div>
+        <span id="var-sql-token">{{ VAR_SQL_TOKEN }}</span>
+        <span id="var-SQL_TOKEN">{{ VAR_SQL_TOKEN }}</span>
+        <span id="var-db-host">{{ VAR_DB_HOST }}</span>
+        <span id="var-db-port">{{ VAR_DB_PORT }}</span>
+        <span id="var-db-name">{{ VAR_DB_NAME }}</span>
+        <span id="var-db-user">{{ VAR_DB_USER }}</span>
         
         <!-- 加密变量/密钥 -->
-        <div id="secret-sql-token">{{ SECRET_SQL_TOKEN }}</div>
-        <div id="secret-db-host">{{ SECRET_DB_HOST }}</div>
-        <div id="secret-db-port">{{ SECRET_DB_PORT }}</div>
-        <div id="secret-db-name">{{ SECRET_DB_NAME }}</div>
-        <div id="secret-db-user">{{ SECRET_DB_USER }}</div>
+        <span id="secret-sql-token">{{ SECRET_SQL_TOKEN }}</span>
+        <span id="secret-db-host">{{ SECRET_DB_HOST }}</span>
+        <span id="secret-db-port">{{ SECRET_DB_PORT }}</span>
+        <span id="secret-db-name">{{ SECRET_DB_NAME }}</span>
+        <span id="secret-db-user">{{ SECRET_DB_USER }}</span>
+        <span id="secret-db-password">{{ SECRET_DB_PASSWORD }}</span>
+        <span id="secret-sql-token-secret">{{ SECRET_SQL_TOKEN_SECRET }}</span>
         
         <!-- 环境信息 -->
-        <div id="env-last-updated">{{ ENV_LAST_UPDATED }}</div>
-        <div id="env-workflow-run">{{ ENV_WORKFLOW_RUN }}</div>
+        <span id="env-last-updated">{{ ENV_LAST_UPDATED }}</span>
+        <span id="env-workflow-run">{{ ENV_WORKFLOW_RUN }}</span>
+        <span id="env-timestamp">{{ ENV_TIMESTAMP }}</span>
     </div>
 </head>
 <body>
