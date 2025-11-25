@@ -8,6 +8,19 @@ on:
 jobs:
   send-request:
     runs-on: ubuntu-latest
+    
+    # 注意：在实际使用时，需要在GitHub仓库的Settings > Secrets and variables > Actions中设置以下密钥
+    # - SQL_API_KEY: API密钥（如果需要）
+    # - SQL_BEARER_TOKEN: Bearer令牌（如果需要）
+    # - SQL_USERNAME: 用户名（如果需要）
+    # - SQL_PASSWORD: 密码（如果需要）
+    
+    env:
+      # 可选的认证环境变量，根据实际API要求启用
+      # SQL_API_KEY: ${{ secrets.SQL_API_KEY }}
+      # SQL_BEARER_TOKEN: ${{ secrets.SQL_BEARER_TOKEN }}
+      # SQL_USERNAME: ${{ secrets.SQL_USERNAME }}
+      # SQL_PASSWORD: ${{ secrets.SQL_PASSWORD }}
 
     steps:
       - name: Checkout code
