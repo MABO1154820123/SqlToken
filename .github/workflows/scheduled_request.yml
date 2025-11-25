@@ -155,7 +155,7 @@ jobs:
               print(f\"[ERROR] 执行过程中出错: {str(e)}\")
               exit(1)
           "
-        env:
+        # env:
           # 环境变量已直接在Python代码中使用GitHub表达式获取，无需额外设置
 
       - name: Verify execution result
