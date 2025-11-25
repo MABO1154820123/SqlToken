@@ -38,7 +38,9 @@ jobs:
           echo "- DB_NAME: ${{ vars.DB_NAME != '' && '已设置' || '使用默认值' }}"
           echo "- DB_USER: ${{ vars.DB_USER != '' && '已设置' || '使用默认值' }}"
           echo "- DB_PASSWORD: ${{ vars.DB_PASSWORD != '' && '已设置' || '使用默认值' }}"
-        env:
+
+
+        # env:
           # 环境变量仅用于显示状态，实际值将在执行脚本时注入
 
       - name: Run Python script directly to get SQL Token and update repo variable
