@@ -15,7 +15,7 @@ jobs:
     # - SQL_USERNAME: 用户名（如果需要）
     # - SQL_PASSWORD: 密码（如果需要）
     
-    env:
+    # env:
       # 可选的认证环境变量，根据实际API要求启用
       # SQL_API_KEY: ${{ secrets.SQL_API_KEY }}
       # SQL_BEARER_TOKEN: ${{ secrets.SQL_BEARER_TOKEN }}
