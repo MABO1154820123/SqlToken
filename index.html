@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Token API</title>
+    <script>
+        // 注意：GitHub Pages本身无法直接访问仓库的secrets或vars
+        // 这个页面模拟返回JSON格式的SQL Token
+        // 实际部署时，需要通过GitHub Actions将SQL_TOKEN的值写入到这个HTML文件中
+        
+        // 设置响应头为JSON
+        document.addEventListener('DOMContentLoaded', function() {
+            // 获取URL参数，看是否需要返回JSON格式
+            const urlParams = new URLSearchParams(window.location.search);
+            const format = urlParams.get('format');
+            
+            if (format === 'json') {
+                // 尝试从某个隐藏元素获取token（实际部署时由GitHub Actions注入）
+                let sqlToken = document.getElementById('sql-token')?.textContent || 'NOT_AVAILABLE';
+                
+                // 构造JSON响应
+                const response = {
+                    "sqlToken": sqlToken
+                };
+                
+                // 输出JSON
+                document.body.textContent = JSON.stringify(response);
+                // 更改Content-Type
+                document.title = 'SQL Token JSON';
+            }
+        });
+    </script>
+    <!-- 这个元素将由GitHub Actions在部署时填充实际的SQL_TOKEN值 -->
+    <div id="sql-token" style="display: none;">{{ SQL_TOKEN }}</div>
+</head>
+<body>
+    <h1>SQL Token API</h1>
+    <p>访问 <a href="?format=json">?format=json</a> 以获取JSON格式的SQL Token</p>
+    
+    <h2>关于安全存储说明</h2>
+    <p>为了将SQL Token保存到GitHub Secrets中，我们需要修改GitHub Actions工作流，使其：</p>
+    <ol>
+        <li>从SQL API获取新的Token</li>
+        <li>使用GitHub API将Token同时设置为仓库变量和仓库密钥</li>
+    </ol>
+    
+    <h2>GitHub Pages 限制</h2>
+    <p>请注意，GitHub Pages是静态网站托管服务，它无法直接访问仓库的secrets或vars。要使此页面能够提供Token，您需要：</p>
+    <ol>
+        <li>在GitHub Actions工作流中，将SQL_TOKEN的值写入到这个HTML文件中</li>
+        <li>然后部署更新后的HTML文件到GitHub Pages</li>
+    </ol>
+</body>
+</html>
