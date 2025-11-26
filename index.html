@@ -2,30 +2,8 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <script>
-        // 页面加载时立即读取并显示time.txt内容
-        window.onload = function() {
-            // 使用Fetch API读取time.txt文件，并添加缓存控制
-            const timestamp = new Date().getTime(); // 添加时间戳确保不使用缓存
-            fetch(`time.txt?t=${timestamp}`, {
-                cache: 'no-cache' // 明确指定不使用缓存
-            })
-                .then(response => {
-                    if (!response.ok) {
-                        document.body.textContent = `错误: 无法加载文件 (状态码: ${response.status})`;
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return response.text();
-                })
-                .then(text => {
-                    // 直接在页面中显示文件内容
-                    document.body.textContent = text;
-                })
-                .catch(error => {
-                    console.error('Error reading file:', error);
-                });
-        };
-    </script>
 </head>
-<body></body>
+<body>
+    <h1>更新sqlToken...</h1>
+</body>
 </html>
