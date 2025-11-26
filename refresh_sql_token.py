@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-自动请求 SQL 服务获取 token → 写入 GitHub 仓库变量 SQL_TOKEN
+自动检查 SQL 服务是否返回 401，仅在需要时获取新 token 并写入 GitHub 仓库变量 SQL_TOKEN
 需在 GitHub Actions 里设置：
   secrets.TOKEN          有 repo 权限的 GitHub PAT
   secrets.DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD
@@ -18,6 +18,7 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_OWNER = os.getenv("GITHUB_OWNER")
 GITHUB_REPO  = os.getenv("GITHUB_REPO")
 SQL_API_URL  = "https://client.sqlpub.com/api/connection"
+TEST_SQL_URL = "https://client.sqlpub.com/api/database/execute"
 
 DB_CFG = {
     "host":     os.getenv("DB_HOST"),
@@ -55,6 +56,66 @@ def set_repo_var(token: str, owner: str, repo: str, name: str, value: str) -> bo
     return False
 
 
+def need_fresh_token() -> bool:
+    """发送测试 SQL，若返回 401 则说明 token 失效，需要重新获取"""
+    # 先从仓库变量里取出当前 SQL_TOKEN（如果存在）
+    sess = requests.Session()
+    sess.headers.update(
+        {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json",
+        }
+    )
+    url_get = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/actions/variables/SQL_TOKEN"
+    resp = sess.get(url_get)
+    if resp.status_code != 200:
+        print("[INFO] 未找到 SQL_TOKEN 变量，视为需要首次获取")
+        return True
+
+    current_token = resp.json().get("value", "").strip()
+    if not current_token:
+        print("[INFO] SQL_TOKEN 为空，需要重新获取")
+        return True
+
+    # 用当前 token 调用 SQL 接口
+    try:
+        r = requests.post(
+            TEST_SQL_URL,
+            headers={
+                "accept": "application/json",
+                "content-type": "application/json",
+                "Authorization": f"Bearer {current_token}",
+            },
+            json={"sql": "select 1;"},
+            timeout=10,
+        )
+        if r.status_code == 401:
+            print("[INFO] 测试 SQL 返回 401，Token 已失效，需要重新获取")
+            return True
+        r.raise_for_status()
+        print("[INFO] 当前 SQL_TOKEN 仍有效，无需更新")
+        return False
+    except Exception as e:
+        print(f"[WARN] 测试 SQL 请求异常: {e}，视为需要重新获取")
+        return True
+
+
+def fetch_sql_token() -> str:
+    """请求 SQL 服务获取全新 token"""
+    print(f"[INFO] 请求 SQL API 获取新 token: {SQL_API_URL}")
+    rsp = requests.post(
+        SQL_API_URL,
+        headers={"accept": "application/json", "content-type": "application/json"},
+        json=DB_CFG,
+        timeout=10,
+    )
+    rsp.raise_for_status()
+    data = rsp.json()
+    if not (data.get("success") and data.get("data", {}).get("token")):
+        raise RuntimeError("API 返回格式异常，未找到 token")
+    return data["data"]["token"]
+
+
 def main() -> None:
     print(f"[INFO] 开始执行: {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -62,30 +123,24 @@ def main() -> None:
         print("[ERROR] 缺少 GITHUB_TOKEN")
         sys.exit(1)
 
-    # 1. 请求 SQL 服务拿 token
-    print(f"[INFO] 请求 SQL API: {SQL_API_URL}")
+    # 1. 判断是否需要更新 token
+    if not need_fresh_token():
+        print("[SUCCESS] 任务完成（无需更新）")
+        return
+
+    # 2. 获取新 token
     try:
-        rsp = requests.post(
-            SQL_API_URL,
-            headers={"accept": "application/json", "content-type": "application/json"},
-            json=DB_CFG,
-            timeout=10,
-        )
-        rsp.raise_for_status()
-        data = rsp.json()
-        if not (data.get("success") and data.get("data", {}).get("token")):
-            raise RuntimeError("API 返回格式异常，未找到 token")
-        sql_token = data["data"]["token"]
+        sql_token = fetch_sql_token()
         print("[SUCCESS] 成功获取 SQL Token")
     except Exception as e:
         print(f"[ERROR] 获取 SQL Token 失败: {e}")
         sys.exit(1)
 
-    # 2. 写回仓库变量
+    # 3. 写回仓库变量
     ok = set_repo_var(GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO, "SQL_TOKEN", sql_token)
     if not ok:
         sys.exit(1)
-    print("[SUCCESS] 任务完成")
+    print("[SUCCESS] 任务完成（已更新）")
 
 
 if __name__ == "__main__":
