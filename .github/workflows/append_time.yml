@@ -5,6 +5,11 @@ on:
     - cron: '* * * * *'  # 每分钟运行一次
   workflow_dispatch:  # 允许手动触发
 
+# 添加必要的权限设置
+permissions:
+  contents: write  # 允许写入仓库内容
+  actions: read    # 允许读取actions信息
+
 jobs:
   append-time:
     runs-on: ubuntu-latest
@@ -14,6 +19,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0  # 获取完整历史
 
       - name: Append current time to time.txt
         run: |
