@@ -1,0 +1,28 @@
+name: Append Time Every Minute
+
+on:
+  schedule:
+    - cron: '* * * * *'  # 每分钟运行一次
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  append-time:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Append current time to time.txt
+        run: |
+          echo "$(date '+%Y-%m-%d %H:%M:%S')" >> time.txt
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add time.txt
+          git diff --quiet && git diff --staged --quiet || git commit -m "Append timestamp"
+          git push

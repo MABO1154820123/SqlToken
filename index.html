@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <script>
+        // 页面加载时立即读取并显示time.txt内容
+        window.onload = function() {
+            // 使用Fetch API读取time.txt文件
+            fetch('time.txt')
+                .then(response => {
+                    if (!response.ok) {
+                        document.body.textContent = `错误: 无法加载文件 (状态码: ${response.status})`;
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(text => {
+                    // 直接在页面中显示文件内容
+                    document.body.textContent = text;
+                })
+                .catch(error => {
+                    console.error('Error reading file:', error);
+                });
+        };
+    </script>
+</head>
+<body></body>
+</html>
