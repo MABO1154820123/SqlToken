@@ -1,17 +1,16 @@
 name: SqlTokenRefresh
 
 on:
-  schedule:
-    - cron: '0 */23 * * *'  # 每23小时执行一次
   workflow_dispatch:  # 允许手动触发运行
   repository_dispatch:
     types: [update-sql-token]  # 允许通过API触发
 
 permissions:
-  contents: read  # 仅需要读取权限，因为我们只写入本地文件
+  actions: write  # 允许读写工作流、变量
+  contents: read  # 读取代码权限
 
 jobs:
-  get-sql-token:
+  update-sql-token:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -25,19 +24,23 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Get SQL Token and write to file
+      - name: Update SQL Token in repository variables
         run: |
           python -c "
           import os
           import json
           import requests
           import time
-          from datetime import datetime
 
           print(f'[INFO] 开始执行: {time.strftime(\"%Y-%m-%d %H:%M:%S\")}')
           
-          # 数据库连接配置
+          # 核心配置
+          GITHUB_TOKEN = '${{ secrets.TOKEN }}'
+          GITHUB_OWNER = '${{ github.repository_owner }}'
+          GITHUB_REPO = '${{ github.event.repository.name || 'SqlToken' }}'
           SQL_API_URL = 'https://client.sqlpub.com/api/connection'
+
+          # 数据库连接配置
           connection_config = {
               'host': '${{ secrets.DB_HOST }}',
               'port': int('${{ secrets.DB_PORT }}'),
@@ -45,6 +48,40 @@ jobs:
               'dbUser': '${{ secrets.DB_USER }}',
               'password': '${{ secrets.DB_PASSWORD }}'
           }
+
+          def set_github_repo_variable(token, owner, repo, var_name, var_value):
+              \"\"\"使用GitHub API设置仓库变量\"\"\"'
+              headers = {
+                  'Authorization': f'token {token}',
+                  'Accept': 'application/vnd.github.v3+json',
+              }
+              
+              # 先检查变量是否存在
+              get_url = f'https://api.github.com/repos/{owner}/{repo}/actions/variables/{var_name}'
+              response = requests.get(get_url, headers=headers)
+              
+              # 根据变量是否存在选择更新或创建
+              if response.status_code == 200:
+                  # 更新现有变量
+                  url = get_url
+                  method = 'PATCH'
+                  print(f'[INFO] 更新GitHub仓库变量: {var_name}')
+              else:
+                  # 创建新变量
+                  url = f'https://api.github.com/repos/{owner}/{repo}/actions/variables'
+                  method = 'POST'
+                  print(f'[INFO] 创建GitHub仓库变量: {var_name}')
+              
+              # 发送请求
+              data = {'name': var_name, 'value': var_value}
+              response = requests.request(method, url, headers=headers, json=data)
+              
+              if response.status_code in [200, 201, 204]:
+                  print(f'[SUCCESS] 成功{'更新' if method == 'PATCH' else '创建'}变量: {var_name}')
+                  return True
+              else:
+                  print(f'[ERROR] 设置变量失败: {response.status_code} - {response.text}')
+                  return False
 
           try:
               # 获取SQL Token
@@ -67,45 +104,40 @@ jobs:
               data = response.json()
               if data.get('success') and data.get('data') and 'token' in data['data']:
                   sql_token = data['data']['token']
-                  print('[SUCCESS] 成功获取SQL Token')
+                  print(f'[SUCCESS] 成功获取SQL Token')
                   
-                  # 写入sqlToken.txt文件
-                  current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                  token_file_content = f'上次更新时间：\n{current_time}\nsqlToken：\n{sql_token}'
-                  with open('sqlToken.txt', 'w', encoding='utf-8') as f:
-                      f.write(token_file_content)
-                  print('[SUCCESS] 成功将SQL Token写入sqlToken.txt文件')
-                  exit(0)
+                  # 检查是否有GitHub Token
+                  if GITHUB_TOKEN:
+                      # 设置仓库变量SQL_TOKEN
+                      var_success = set_github_repo_variable(
+                          token=GITHUB_TOKEN,
+                          owner=GITHUB_OWNER,
+                          repo=GITHUB_REPO,
+                          var_name='SQL_TOKEN',
+                          var_value=sql_token
+                      )
+                      
+                      if var_success:
+                          print('[SUCCESS] 任务完成: SQL Token已成功更新到仓库变量SQL_TOKEN')
+                          exit(0)
+                      else:
+                          print('[ERROR] 更新仓库变量失败')
+                          exit(1)
+                  else:
+                      print('[ERROR] 缺少GITHUB_TOKEN，无法更新仓库变量')
+                      exit(1)
               else:
-                  print('[ERROR] API响应中未找到有效token')
-                  # 创建包含错误信息的token文件
-                  current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                  token_file_content = f'上次更新时间：\n{current_time}\nsqlToken：\n无有效token'
-                  with open('sqlToken.txt', 'w', encoding='utf-8') as f:
-                      f.write(token_file_content)
+                  print(f'[ERROR] API响应中未找到有效token')
                   exit(1)
           
           except Exception as e:
               print(f'[ERROR] 执行过程中出错: {str(e)}')
-              # 创建包含错误信息的token文件
-              try:
-                  current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                  token_file_content = f'上次更新时间：\n{current_time}\nsqlToken：\n获取失败: {str(e)}'
-                  with open('sqlToken.txt', 'w', encoding='utf-8') as f:
-                      f.write(token_file_content)
-                  print('[INFO] 已创建包含错误信息的sqlToken.txt文件')
-              except:
-                  pass
               exit(1)
           "
 
-      - name: Verify token file
+      - name: Verify execution result
         if: always()
         run: |
           echo "=== 执行结果验证 ==="
-          if [ -f "sqlToken.txt" ]; then
-            echo "sqlToken.txt文件已生成"
-            echo "文件内容前8个字符: $(head -c 8 sqlToken.txt)..."
-          else
-            echo "错误: 未找到sqlToken.txt文件"
-          fi
+          echo "工作流执行状态: ${{ job.status }}"
+          echo "如需查看SQL_TOKEN变量是否已更新，请在GitHub仓库的Actions secrets and variables页面查看"
