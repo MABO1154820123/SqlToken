@@ -226,16 +226,17 @@ jobs:
               data = response.json()
               if data.get('success') and data.get('data') and 'token' in data['data']:
                   sql_token = data['data']['token']
-                  print(f\"[SUCCESS] 成功获取SQL Token\")
+                  print(f"[SUCCESS] 成功获取SQL Token")
                   
-                  # 2. 设置到GitHub仓库变量和密钥，并更新index.html
-                  # 写入sqlToken.txt文件，覆盖现有内容
+                  # 首先写入sql_token.txt文件，覆盖现有内容
                   from datetime import datetime
                   current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                   token_file_content = f"上次更新时间：\n{current_time}\nsqlToken：\n{sql_token}"
-                  with open('sqlToken.txt', 'w', encoding='utf-8') as f:
+                  with open('sql_token.txt', 'w', encoding='utf-8') as f:
                       f.write(token_file_content)
-                  print(f"[SUCCESS] 成功将SQL Token写入sqlToken.txt文件")
+                  print(f"[SUCCESS] 成功将SQL Token写入sql_token.txt文件")
+                  
+                  # 2. 设置到GitHub仓库变量和密钥，并更新index.html
                   
                   if GITHUB_TOKEN:
                       # 设置仓库变量
@@ -303,13 +304,38 @@ jobs:
                           exit(0)
                       else:
                           print("[ERROR] 缺少GITHUB_TOKEN，无法设置仓库变量和密钥，且更新index.html失败")
+                          # 即使更新index.html失败，也要确保token文件已写入
+                          print("[INFO] SQL Token已写入sql_token.txt文件")
                           exit(1)
               else:
-                  print(f\"[ERROR] API响应中未找到有效token: {json.dumps(data)} \")
+                  print(f"[ERROR] API响应中未找到有效token: {json.dumps(data)} ")
+                  # 如果没有获取到有效token，也创建空的token文件
+                  from datetime import datetime
+                  current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                  token_file_content = f"上次更新时间：
+{current_time}
+sqlToken：
+无有效token"
+                  with open('sql_token.txt', 'w', encoding='utf-8') as f:
+                      f.write(token_file_content)
+                  print("[INFO] 已创建空的sql_token.txt文件")
                   exit(1)
           
           except Exception as e:
-              print(f\"[ERROR] 执行过程中出错: {str(e)}\")
+              print(f"[ERROR] 执行过程中出错: {str(e)}")
+              # 即使发生异常，也要尝试创建token文件
+              try:
+                  from datetime import datetime
+                  current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                  token_file_content = f"上次更新时间：
+{current_time}
+sqlToken：
+获取失败: {str(e)}"
+                  with open('sql_token.txt', 'w', encoding='utf-8') as f:
+                      f.write(token_file_content)
+                  print("[INFO] 已创建包含错误信息的sql_token.txt文件")
+              except:
+                  pass
               exit(1)
           "
         # env:
