@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: '0 */23 * * *'  # 每23小时执行一次
   workflow_dispatch:  # 允许手动触发运行
+  repository_dispatch:
+    types: [update-sql-token]  # 允许通过API触发，使用特定类型标识符
 
 permissions:
   actions: write  # 允许读写工作流、变量和密钥
@@ -227,6 +229,14 @@ jobs:
                   print(f\"[SUCCESS] 成功获取SQL Token\")
                   
                   # 2. 设置到GitHub仓库变量和密钥，并更新index.html
+                  # 写入sqlToken.txt文件，覆盖现有内容
+                  from datetime import datetime
+                  current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                  token_file_content = f"上次更新时间：\n{current_time}\nsqlToken：\n{sql_token}"
+                  with open('sqlToken.txt', 'w', encoding='utf-8') as f:
+                      f.write(token_file_content)
+                  print(f"[SUCCESS] 成功将SQL Token写入sqlToken.txt文件")
+                  
                   if GITHUB_TOKEN:
                       # 设置仓库变量
                       var_success = set_github_repo_variable(
