@@ -5,15 +5,13 @@ on:
     - cron: '0 */23 * * *'  # 每23小时执行一次
   workflow_dispatch:  # 允许手动触发运行
   repository_dispatch:
-    types: [update-sql-token]  # 允许通过API触发，使用特定类型标识符
+    types: [update-sql-token]  # 允许通过API触发
 
 permissions:
-  actions: write  # 允许读写工作流、变量
-  contents: write  # 允许读写仓库内容，用于更新index.html
-  # secrets权限在GitHub Actions中不是有效的权限值
+  contents: read  # 仅需要读取权限，因为我们只写入本地文件
 
 jobs:
-  send-request:
+  get-sql-token:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -27,44 +25,19 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Check environment configuration
-        id: check-config
-        run: |
-          echo "=== Environment Configuration Check ==="
-          echo "GITHUB_REPOSITORY: $GITHUB_REPOSITORY"
-          echo "GITHUB_RUN_ID: $GITHUB_RUN_ID"
-          echo "=== Token Status ==="
-          # 注意：SQL_TOKEN环境变量可能已通过API写入仓库变量，而不是工作流环境变量
-          echo "数据库配置信息:"
-          echo "- DB_HOST: ${{ secrets.DB_HOST != '' && '已设置' || '使用默认值' }}"
-          echo "- DB_PORT: ${{ secrets.DB_PORT != '' && '已设置' || '使用默认值' }}"
-          echo "- DB_NAME: ${{ secrets.DB_NAME != '' && '已设置' || '使用默认值' }}"
-          echo "- DB_USER: ${{ secrets.DB_USER != '' && '已设置' || '使用默认值' }}"
-          echo "- DB_PASSWORD: ${{ secrets.DB_PASSWORD != '' && '已设置' || '使用默认值' }}"
-
-
-        # env:
-          # 环境变量仅用于显示状态，实际值将在执行脚本时注入
-
-      - name: Run Python script directly to get SQL Token and update repo variable
-        id: run-script
+      - name: Get SQL Token and write to file
         run: |
           python -c "
           import os
           import json
           import requests
           import time
+          from datetime import datetime
 
           print(f'[INFO] 开始执行: {time.strftime(\"%Y-%m-%d %H:%M:%S\")}')
-          print(f'[INFO] 目标仓库: ${{ github.repository }}')
           
-          # 核心配置 - 直接从GitHub环境中获取
-          GITHUB_TOKEN = '${{ secrets.TOKEN }}'
-          GITHUB_OWNER = '${{ github.repository_owner }}'
-          GITHUB_REPO = '${{ github.event.repository.name || 'SqlToken' }}'
+          # 数据库连接配置
           SQL_API_URL = 'https://client.sqlpub.com/api/connection'
-
-          # 数据库连接配置 - 直接从GitHub secrets中获取
           connection_config = {
               'host': '${{ secrets.DB_HOST }}',
               'port': int('${{ secrets.DB_PORT }}'),
@@ -73,144 +46,12 @@ jobs:
               'password': '${{ secrets.DB_PASSWORD }}'
           }
 
-          def set_github_repo_variable(token, owner, repo, var_name, var_value):
-              """使用GitHub API设置仓库变量"""
-              headers = {
-                  'Authorization': f'token {token}',
-                  'Accept': 'application/vnd.github.v3+json',
-              }
-              
-              # 先检查变量是否存在
-              get_url = f'https://api.github.com/repos/{owner}/{repo}/actions/variables/{var_name}'
-              response = requests.get(get_url, headers=headers)
-              
-              # 根据变量是否存在选择更新或创建
-              if response.status_code == 200:
-                  # 更新现有变量
-                  url = get_url
-                  method = 'PATCH'
-                  print(f"[INFO] 更新GitHub仓库变量: {var_name}")
-              else:
-                  # 创建新变量
-                  url = f'https://api.github.com/repos/{owner}/{repo}/actions/variables'
-                  method = 'POST'
-                  print(f"[INFO] 创建GitHub仓库变量: {var_name}")
-              
-              # 发送请求
-              data = {'name': var_name, 'value': var_value}
-              response = requests.request(method, url, headers=headers, json=data)
-              
-              if response.status_code in [200, 201, 204]:
-                  print(f"[SUCCESS] 成功{'更新' if method == 'PATCH' else '创建'}变量: {var_name}")
-                  return True
-              else:
-                  print(f"[ERROR] 设置变量失败: {response.status_code} - {response.text}")
-                  return False
-          
-          def set_github_repo_secret(token, owner, repo, secret_name, secret_value):
-              """使用GitHub API设置仓库密钥"""
-              headers = {
-                  'Authorization': f'token {token}',
-                  'Accept': 'application/vnd.github.v3+json',
-              }
-              
-              # 获取公钥用于加密密钥值
-              url = f'https://api.github.com/repos/{owner}/{repo}/actions/secrets/public-key'
-              response = requests.get(url, headers=headers)
-              
-              if response.status_code != 200:
-                  print(f"[ERROR] 获取公钥失败: {response.status_code} - {response.text}")
-                  return False
-              
-              public_key_data = response.json()
-              public_key = public_key_data['key']
-              key_id = public_key_data['key_id']
-              
-              # 加密密钥值（使用base64编码模拟，实际需要使用RSA加密）
-              import base64
-              # 注意：这里仅做演示，实际需要使用RSA加密
-              encrypted_value = base64.b64encode(secret_value.encode()).decode()
-              
-              # 设置密钥
-              url = f'https://api.github.com/repos/{owner}/{repo}/actions/secrets/{secret_name}'
-              data = {
-                  'encrypted_value': encrypted_value,
-                  'key_id': key_id
-              }
-              response = requests.put(url, headers=headers, json=data)
-              
-              if response.status_code in [201, 204]:
-                  print(f"[SUCCESS] 成功设置仓库密钥: {secret_name}")
-                  return True
-              else:
-                  print(f"[ERROR] 设置密钥失败: {response.status_code} - {response.text}")
-                  return False
-          
-          def update_index_html(token_value, variables=None, secrets=None):
-              """更新index.html文件，将SQL Token和所有变量注入到隐藏元素中"""
-              try:
-                  from datetime import datetime
-                  # 读取现有HTML文件
-                  with open('index.html', 'r', encoding='utf-8') as f:
-                      html_content = f.read()
-                   
-                  # 替换token占位符
-                  updated_content = html_content.replace('{{ SQL_TOKEN }}', token_value)
-                   
-                  # 处理常规变量
-                  if variables:
-                      for key, value in variables.items():
-                          placeholder = f'{{{{ VAR_{key.upper()} }}}}'
-                          updated_content = updated_content.replace(placeholder, value)
-                          # 同时更新id为var-{key}的元素内容
-                          var_placeholder = f'<span id="var-{key}">{{{{ VAR_{key.upper()} }}}}</span>'
-                          updated_content = updated_content.replace(var_placeholder, f'<span id="var-{key}">{value}</span>')
-                   
-                  # 处理加密变量（我们不存储实际值，只标记存在）
-                  if secrets:
-                      for key, value in secrets.items():
-                          secret_placeholder = f'{{{{ SECRET_{key.upper()} }}}}'
-                          updated_content = updated_content.replace(secret_placeholder, 'SECRET_VALUE_SET')
-                          # 同时更新id为secret-{key}的元素内容
-                          secret_element_placeholder = f'<span id="secret-{key}">{{{{ SECRET_{key.upper()} }}}}</span>'
-                          updated_content = updated_content.replace(secret_element_placeholder, f'<span id="secret-{key}">SECRET_VALUE_SET</span>')
-                   
-                  # 更新环境信息
-                  current_time = datetime.now().isoformat()
-                  updated_content = updated_content.replace('{{ ENV_TIMESTAMP }}', current_time)
-                  updated_content = updated_content.replace('<span id="env-timestamp">{{ ENV_TIMESTAMP }}</span>', f'<span id="env-timestamp">{current_time}</span>')
-                   
-                  # 添加更多环境信息
-                  workflow_run_id = os.environ.get('GITHUB_RUN_ID', 'UNKNOWN')
-                  updated_content = updated_content.replace('{{ ENV_WORKFLOW_RUN }}', workflow_run_id)
-                  updated_content = updated_content.replace('<span id="env-workflow-run">{{ ENV_WORKFLOW_RUN }}</span>', f'<span id="env-workflow-run">{workflow_run_id}</span>')
-                   
-                  # 写回文件
-                  with open('index.html', 'w', encoding='utf-8') as f:
-                      f.write(updated_content)
-                   
-                  # 打印更新信息
-                  print(f"[SUCCESS] 成功更新index.html文件")
-                  print(f"   - SQL Token已更新")
-                  if variables:
-                      print(f"   - 已更新{len(variables)}个常规变量")
-                  if secrets:
-                      print(f"   - 已更新{len(secrets)}个加密变量标记")
-                  return True
-              except Exception as e:
-                  print(f"[ERROR] 更新index.html文件失败: {str(e)}")
-                  # 打印错误详情以帮助调试
-                  import traceback
-                  print(f"错误详情: {traceback.format_exc()}")
-                  return False
-
           try:
-              # 1. 获取SQL Token
-              print(f\"[INFO] 发送请求到SQL API: {SQL_API_URL}\")
+              # 获取SQL Token
+              print(f'[INFO] 发送请求到SQL API: {SQL_API_URL}')
               headers = {
                   'accept': 'application/json',
-                  'content-type': 'application/json',
-                  'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+                  'content-type': 'application/json'
               }
               
               response = requests.post(
@@ -220,138 +61,51 @@ jobs:
                   timeout=10
               )
               
-              print(f\"[INFO] API响应状态: {response.status_code}\")
+              print(f'[INFO] API响应状态: {response.status_code}')
               response.raise_for_status()
               
               data = response.json()
               if data.get('success') and data.get('data') and 'token' in data['data']:
                   sql_token = data['data']['token']
-                  print(f"[SUCCESS] 成功获取SQL Token")
+                  print('[SUCCESS] 成功获取SQL Token')
                   
-                  # 首先写入sqlToken.txt文件，覆盖现有内容
-                  from datetime import datetime
+                  # 写入sqlToken.txt文件
                   current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                  token_file_content = f"上次更新时间：\n{current_time}\nsqlToken：\n{sql_token}"
+                  token_file_content = f'上次更新时间：\n{current_time}\nsqlToken：\n{sql_token}'
                   with open('sqlToken.txt', 'w', encoding='utf-8') as f:
                       f.write(token_file_content)
-                  print(f"[SUCCESS] 成功将SQL Token写入sqlToken.txt文件")
-
-
-                  
-                  # 2. 设置到GitHub仓库变量和密钥，并更新index.html
-                  
-                  if GITHUB_TOKEN:
-                      # 设置仓库变量
-                      var_success = set_github_repo_variable(
-                          token=GITHUB_TOKEN,
-                          owner=GITHUB_OWNER,
-                          repo=GITHUB_REPO,
-                          var_name='SQL_TOKEN',
-                          var_value=sql_token
-                      )
-                      
-                      # 设置仓库密钥
-                      secret_success = set_github_repo_secret(
-                          token=GITHUB_TOKEN,
-                          owner=GITHUB_OWNER,
-                          repo=GITHUB_REPO,
-                          secret_name='SQL_TOKEN_SECRET',
-                          secret_value=sql_token
-                      )
-                      
-                      # 准备变量和密钥数据
-                      variables_data = {
-                          'SQL_TOKEN': sql_token,
-                          'DB_HOST': connection_config.get('host', 'NOT_SET'),
-                          'DB_PORT': connection_config.get('port', 'NOT_SET'),
-                          'DB_NAME': connection_config.get('dbname', 'NOT_SET'),
-                          'DB_USER': connection_config.get('user', 'NOT_SET')
-                      }
-                      
-                      secrets_data = {
-                          'SQL_TOKEN_SECRET': sql_token,
-                          'DB_PASSWORD': connection_config.get('password', 'NOT_SET')
-                      }
-                      
-                      # 更新index.html文件，传入所有变量和密钥信息
-                      html_success = update_index_html(sql_token, variables=variables_data, secrets=secrets_data)
-                      
-                      # 检查所有操作是否成功
-                      if var_success and secret_success and html_success:
-                          print("[SUCCESS] 任务完成: SQL Token已成功设置到GitHub仓库变量和密钥，并更新了index.html")
-                          exit(0)
-                      else:
-                          print("[WARNING] 部分操作可能失败，但至少有一个操作成功")
-                          # 即使部分操作失败，只要有一个成功就视为整体成功
-                          exit(0)
-                  else:
-                      # 准备变量和密钥数据
-                      variables_data = {
-                          'SQL_TOKEN': sql_token,
-                          'DB_HOST': connection_config.get('host', 'NOT_SET'),
-                          'DB_PORT': connection_config.get('port', 'NOT_SET'),
-                          'DB_NAME': connection_config.get('dbname', 'NOT_SET'),
-                          'DB_USER': connection_config.get('user', 'NOT_SET')
-                      }
-                      
-                      secrets_data = {
-                          'SQL_TOKEN_SECRET': sql_token,
-                          'DB_PASSWORD': connection_config.get('password', 'NOT_SET')
-                      }
-                      
-                      # 即使没有GitHub Token，也尝试更新本地index.html文件，传入所有变量和密钥信息
-                      html_success = update_index_html(sql_token, variables=variables_data, secrets=secrets_data)
-                      if html_success:
-                          print("[SUCCESS] 本地index.html文件已更新，但无法设置GitHub仓库变量和密钥")
-                          exit(0)
-                      else:
-                          print("[ERROR] 缺少GITHUB_TOKEN，无法设置仓库变量和密钥，且更新index.html失败")
-                          # 即使更新index.html失败，也要确保token文件已写入
-                          print("[INFO] SQL Token已写入sqlToken.txt文件")
-
-
-                          exit(1)
+                  print('[SUCCESS] 成功将SQL Token写入sqlToken.txt文件')
+                  exit(0)
               else:
-                  print(f"[ERROR] API响应中未找到有效token: {json.dumps(data)} ")
-                  # 如果没有获取到有效token，也创建空的token文件
-                  from datetime import datetime
+                  print('[ERROR] API响应中未找到有效token')
+                  # 创建包含错误信息的token文件
                   current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                  token_file_content = f"上次更新时间：\n{current_time}\nsqlToken：\n无有效token"
-
+                  token_file_content = f'上次更新时间：\n{current_time}\nsqlToken：\n无有效token'
                   with open('sqlToken.txt', 'w', encoding='utf-8') as f:
                       f.write(token_file_content)
-                  print("[INFO] 已创建空的sqlToken.txt文件")
                   exit(1)
           
           except Exception as e:
-              print(f"[ERROR] 执行过程中出错: {str(e)}")
-              # 即使发生异常，也要尝试创建token文件
+              print(f'[ERROR] 执行过程中出错: {str(e)}')
+              # 创建包含错误信息的token文件
               try:
-                  from datetime import datetime
                   current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                  token_file_content = f"上次更新时间：\n{current_time}\nsqlToken：\n获取失败: {str(e)}"
+                  token_file_content = f'上次更新时间：\n{current_time}\nsqlToken：\n获取失败: {str(e)}'
                   with open('sqlToken.txt', 'w', encoding='utf-8') as f:
                       f.write(token_file_content)
-                  print("[INFO] 已创建包含错误信息的sqlToken.txt文件")
-
-
+                  print('[INFO] 已创建包含错误信息的sqlToken.txt文件')
               except:
                   pass
               exit(1)
           "
-        # env:
-          # 环境变量已直接在Python代码中使用GitHub表达式获取，无需额外设置
 
-      - name: Verify execution result
+      - name: Verify token file
         if: always()
         run: |
           echo "=== 执行结果验证 ==="
-          echo "工作流执行状态: ${{ job.status }}"
-
           if [ -f "sqlToken.txt" ]; then
-            echo "本地token文件已生成 (显示前8个字符): $(head -c 8 sqlToken.txt)..."
-
+            echo "sqlToken.txt文件已生成"
+            echo "文件内容前8个字符: $(head -c 8 sqlToken.txt)..."
           else
-            echo "未找到本地token文件，但可能已通过API设置到仓库变量中"
+            echo "错误: 未找到sqlToken.txt文件"
           fi
-          # 注意：SQL_TOKEN环境变量可能已通过API写入仓库变量，而不是工作流环境变量
