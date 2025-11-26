@@ -1,20 +1,8 @@
 name: SqlTokenRefresh
 
 on:
-  # 1. 手动触发（保留）
-  workflow_dispatch:
-
-  # 2. 通过 GitHub API 发送 repository_dispatch 事件（保留）
-  repository_dispatch:
-    types: [update-sql-token]
-
-  # 3. 每 5 分钟自动跑一次
   schedule:
-    - cron: '*/5 * * * *'   # UTC 时间；北京时间 UTC+8 对应每 5 分钟
-
-  # 4. 让外部 HTTP 请求也能调（GitHub 提供的“可调用工作流”）
-  #    调用方式见下方说明
-  workflow_call:
+    - cron: '*/5 * * * *'
 
 permissions:
   actions: write
