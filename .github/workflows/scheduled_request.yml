@@ -8,9 +8,9 @@ on:
     types: [update-sql-token]  # 允许通过API触发，使用特定类型标识符
 
 permissions:
-  actions: write  # 允许读写工作流、变量和密钥
+  actions: write  # 允许读写工作流、变量
   contents: write  # 允许读写仓库内容，用于更新index.html
-  secrets: write  # 允许设置仓库密钥
+  # secrets权限在GitHub Actions中不是有效的权限值
 
 jobs:
   send-request:
