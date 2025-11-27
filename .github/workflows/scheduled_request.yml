@@ -2,7 +2,8 @@ name: SqlTokenRefresh
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    # 每天 UTC 05:29，对应东八区 13:29
+    - cron: '29 5 * * *'
 
 permissions:
   actions: write
