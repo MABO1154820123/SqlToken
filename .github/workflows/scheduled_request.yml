@@ -3,7 +3,7 @@ name: SqlTokenRefresh
 on:
   schedule:
     # 不确定具体多久会执行一次，因为github有延迟，大概15~30分钟执行一次
-    - cron: '*/5 * * * *'
+    - cron: '0 */23 * * *'
 
 permissions:
   actions: write
