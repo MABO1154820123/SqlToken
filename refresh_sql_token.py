@@ -17,7 +17,8 @@ import requests
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_OWNER = os.getenv("GITHUB_OWNER")
 GITHUB_REPO  = os.getenv("GITHUB_REPO")
-SQL_API_URL  = "https://client.sqlpub.com/api/connection"
+#SQL_API_URL  = "https://client.sqlpub.com/api/connection"
+SQL_API_URL  = "https://www.sqlpub.com/api/login"
 TEST_SQL_URL = "https://client.sqlpub.com/api/database/execute"
 
 DB_CFG = {
@@ -145,3 +146,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
