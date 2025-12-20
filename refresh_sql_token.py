@@ -21,12 +21,18 @@ GITHUB_REPO  = os.getenv("GITHUB_REPO")
 SQL_API_URL  = "https://www.sqlpub.com/api/login"
 TEST_SQL_URL = "https://client.sqlpub.com/api/database/execute"
 
+# DB_CFG = {
+#     "host":     os.getenv("DB_HOST"),
+#     "port":     int(os.getenv("DB_PORT", 0)),
+#     "dbName":   os.getenv("DB_NAME"),
+#     "dbUser":   os.getenv("DB_USER"),
+#     "password": os.getenv("DB_PASSWORD"),
+# }
+
 DB_CFG = {
-    "host":     os.getenv("DB_HOST"),
-    "port":     int(os.getenv("DB_PORT", 0)),
-    "dbName":   os.getenv("DB_NAME"),
-    "dbUser":   os.getenv("DB_USER"),
-    "password": os.getenv("DB_PASSWORD"),
+    "username":"mapo1154820123@outlook.com",
+    "password":"9sl5L4iKnpAP49dj",
+    "type":"Account"
 }
 # --------------------------
 
@@ -146,4 +152,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
