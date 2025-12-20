@@ -118,6 +118,7 @@ def fetch_sql_token() -> str:
     )
     rsp.raise_for_status()
     data = rsp.json()
+    print("Response:----------------->\n"+data+"\n")
     if not (data.get("success") and data.get("data", {}).get("token")):
         raise RuntimeError("API 返回格式异常，未找到 token")
     return data["data"]["token"]
@@ -152,5 +153,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
 
