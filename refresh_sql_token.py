@@ -12,27 +12,20 @@ import sys
 import json
 import time
 import requests
+import re
+from urllib.parse import urljoin
 
 # ---------- 配置 ----------
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_OWNER = os.getenv("GITHUB_OWNER")
 GITHUB_REPO  = os.getenv("GITHUB_REPO")
-#SQL_API_URL  = "https://client.sqlpub.com/api/connection"
 SQL_API_URL  = "https://www.sqlpub.com/api/login"
 TEST_SQL_URL = "https://client.sqlpub.com/api/database/execute"
 
-# DB_CFG = {
-#     "host":     os.getenv("DB_HOST"),
-#     "port":     int(os.getenv("DB_PORT", 0)),
-#     "dbName":   os.getenv("DB_NAME"),
-#     "dbUser":   os.getenv("DB_USER"),
-#     "password": os.getenv("DB_PASSWORD"),
-# }
-
 DB_CFG = {
-    "username":"mapo1154820123@outlook.com",
-    "password":"9sl5L4iKnpAP49dj",
-    "type":"Account"
+    "username": "mapo1154820123@outlook.com",
+    "password": "9sl5L4iKnpAP49dj",
+    "type": "Account"
 }
 # --------------------------
 
@@ -108,19 +101,51 @@ def need_fresh_token() -> bool:
 
 
 def fetch_sql_token() -> str:
-    """请求 SQL 服务获取全新 token"""
-    print(f"[INFO] 请求 SQL API 获取新 token: {SQL_API_URL}")
-    rsp = requests.post(
-        SQL_API_URL,
-        headers={"accept": "application/json", "content-type": "application/json"},
-        json=DB_CFG,
-        timeout=10,
-    )
+    """请求 SQL 服务获取全新 token（带 CSRF 和 Cookie）"""
+    base_url = "https://www.sqlpub.com"
+    login_page = base_url + "/login"
+    api_url = base_url + "/api/login"
+
+    sess = requests.Session()
+    sess.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+    })
+
+    # 1. 先 GET 登录页，拿 Cookie + CSRF
+    r = sess.get(login_page, timeout=15)
+    r.raise_for_status()
+
+    # 从页面里抠 _token
+    m = re.search(r'name=["\']_token["\'][^>]*value=["\']([^"\']+)["\']', r.text)
+    if not m:
+        raise RuntimeError("登录页未找到 CSRF token")
+    csrf_token = m.group(1)
+
+    # 2. 组装带 CSRF 的登录数据
+    payload = {
+        "username": DB_CFG["username"],
+        "password": DB_CFG["password"],
+        "type": DB_CFG["type"],
+        "_token": csrf_token
+    }
+
+    # 3. 发 JSON 登录请求
+    sess.headers.update({
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/json",
+        "Origin": base_url,
+        "Referer": login_page
+    })
+    rsp = sess.post(api_url, json=payload, timeout=15)
     rsp.raise_for_status()
+
     data = rsp.json()
-    print("Response:----------------->\n"+data+"\n")
     if not (data.get("success") and data.get("data", {}).get("token")):
-        raise RuntimeError("API 返回格式异常，未找到 token")
+        raise RuntimeError(f"API 返回异常: {data}")
+
     return data["data"]["token"]
 
 
@@ -153,6 +178,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-
